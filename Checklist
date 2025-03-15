@@ -1,0 +1,393 @@
+#Checklist
+
+#OS backup
+
+sudo tar -cvpzf /baker_street_backup.tar.gz --exclude=/baker_street_backup.tar.gz --exclude=/proc --exclude=/tmp --exclude=/mnt --exclude=/sys --exclude=/dev --exclude=/run /
+
+#Auditing users and groups 
+#Remove terminated users:
+sudo userdel -r lestrade && sudo userdel -r irene && sudo userdel -r mary && sudo userdel -r gregson
+
+#Error: 
+#Checked user list: 
+cat /etc/passwd
+
+#Result: users have been removed
+
+#Confirming with command: 
+id gregson mary irene lestrade
+
+#Confirming home directories have been removed: 
+cd home
+ls
+
+#Lock users moriarty and mrs_hudson:
+usermod -L moriarty
+usermod -L mrs_hudson
+
+#Unlock sherlock, watson, mycroft, toby, adler
+usermod -U [username]
+
+#Note: Users toby and adler do not have passwords
+
+#New password set for toby: P@ssword!
+passwd toby
+passwd adler
+
+#Unlocked their accounts:
+usermod -U toby
+usermod -U adler
+
+
+#Check for group named research:
+grep “research” /etc/group
+
+#No results.
+
+#Created group:
+groupadd research
+
+#There are no users in the marketing group.
+
+delgroup marketing
+
+#Updating and enforcing password policies
+nano /etc/pam.d/common-password
+
+#Added line: 
+password        requisite                       pam_pwquality.so minlen=8 ocredit=-1 retry=2 ucredit=-1
+
+#Updating and enforcing sudo permissions
+visudo
+
+#Remove full privileged users except for Sherlock.Watson and Mycroft should only have sudo privileges to run a script:
+
+sherlock ALL=(ALL) NOPASSWD:ALL
+watson   ALL=(ALL) NOPASSWD: /var/log/logcleanup.sh                                           
+mycroft ALL=(ALL) NOPASSWD: /var/log/logcleanup.sh
+
+#Added line for research group privileges:
+%research   ALL=(ALL) NOPASSWD: /tmp/scripts/research_script.sh
+
+#Validating and updating permissions on files and directories
+cd home
+ls -la *
+
+#To find and remove all user files in home that have world permissions:
+
+find /home -type f \ ( -perm -o=r -o -perm -o=w -o -perm -o=x \) -ls -exec chmod o-rwx {} +
+
+#Success.
+
+#Find the following files and make the associated updates:
+find /home -type f -iname '*engineering*' -exec chown :engineering {} + -exec chmod 770 {} +
+find /home -type f -iname '*research*' -exec chown :research {} + -exec chmod 770 {} +
+find /home -type f -iname '*finance*' -exec chown :finance {} + -exec chmod 770 {} +
+
+#There were no “Research” files.
+
+#Find files with hidden passwords and remove them as no employee should have their passwords stored on the server.
+
+find /home -iname "*password*"
+find / -iname "*password*" -exec rm -f {} \;
+#No results.
+
+#Optional: Updating password hashing configuration
+#Looked for /etc/pam.d/common-password, file does not exist…
+
+#Checking what kind of hashing is currently used
+cat /etc/shadow
+# Result: $y$
+#Research shows this is Yescrypt, which is more resistant to offline password-cracking attacks than SHA512.
+#I will leave it as it is.
+
+
+#Auditing and securing SSH
+#Configure SSH to not allow the ability to:
+#SSH with empty passwords
+#SSH with the root user
+#SSH with any other ports besides 22
+
+nano /etc/ssh/sshd_config
+
+#Changed PermitRootLogin yes to no
+#Changed PermitEmptyPasswords yes to no
+
+
+#Removed the extra ports listed that are not 22.
+#Removed # from Port 22 to enable this.
+#Changed Protocol 1 to Protocol 2.
+
+service ssh restart
+service ssh status
+
+#sshd is not running.
+
+systemctl status sshd
+#
+“System has not been booted with systemd as init system (PID 1). Can’t operate.”
+
+
+#Reviewing and updating system packages
+
+apt update
+apt upgrade -y
+apt list --installed >> package_list.txt
+grep telnet /package_list.txt
+
+#Telnet is installed
+
+grep rsh-client /package_list.txt
+
+#Rsh-client is installed
+
+#Both Telnet and RSH (Remote Shell) are outdated and insecure protocols for remote communication.
+#Both transmit data, including usernames and passwords, in plain text.
+#These protocols are old and haven't been updated with modern security features, they are easily exploitable.
+#Neither have strong authentication mechanisms.
+
+apt-get remove telnet
+Y
+apt-get remove rsh-client
+Y
+apt autoremove -y
+
+#Add the following packages:
+#ufw
+#lynis
+#tripwire
+
+apt install ufw -y
+apt install lynis -y
+apt install tripwire -y
+
+#UFW (Uncomplicated Firewall)
+#Easy configuration of firewall rules using simple commands like 'allow' and 'deny'.
+#Predefined profiles for common applications, simplifying protection of basic network services.
+#Ability to block or limit traffic from suspicious IP addresses, helping mitigate DDoS attacks.
+#Port-specific and protocol-specific traffic blocking.
+#Limiting simultaneous connections from an IP address or to a specific service.
+#Detailed logging of network traffic for attack detection and analysis.
+
+#Lynis
+#Performs extensive health scans of Linux, macOS, and Unix-based systems
+#Supports security auditing, compliance testing, and vulnerability detection
+#Provides a hardening index to indicate how well a system is secured
+#Checks for user accounts without passwords
+#Examines file system security, including sticky bits on /tmp and old files in /tmp
+#Assesses firewall configurations
+#Evaluates compiler access and permissions
+#Identifies end-of-life operating systems
+
+#Tripwire
+#Automates the hardening of servers, databases, and network devices
+#Continuously monitors system integrity
+#Provides real-time change auditing and threat detection
+#Offers compliance policies and business context visibility
+#Supports both agent-based and agentless monitoring
+#Integrates with SIEMs, IT-GRC platforms, and change management tools
+
+
+#Disabling unnecessary services
+service --status-all
+service --status-all >> service_list.txt
+cat service_list.txt
+#Confirmed the information is inside the file.
+
+service mysql status
+#MySQL is stopped.
+service samba-ad-dc status
+#Samba is not running
+
+service samba-ad-dc stop
+
+apt-get remove mysql
+apt-get remove samba-ad-dc
+
+#Enabling and configuring logging
+cd /etc/systemd
+nano journald.conf
+
+#Changed storage from auto to persistent.
+#Changed systemMaxUse to =300
+#Uncommented storage=persistent and systemMaxUse=300M
+
+
+#Move back into /etc
+cd ../
+nano logrotate.conf
+
+#Change the log rotation from weekly to daily.
+#Rotate out the logs after 7 days.
+
+# rotate log files weekly
+#Weekly (changed this to daily)
+
+# keep 4 weeks worth of backlogs
+#Rotate 4 (changed this to 1)
+
+
+#Scripts created
+#hardening_script1.sh
+
+#!/bin/bash
+
+# Variable for the report output file, choose an output file name
+REPORT_FILE="Report.txt"
+
+# Output the hostname
+echo "Gathering hostname..."
+# Placeholder for command to get the hostname
+echo "Hostname: $(hostname)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Output the OS version
+echo "Gathering OS version..."
+# Placeholder for command to get the OS version
+echo "OS Version: $(uname -o)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Output memory information
+echo "Gathering memory information..."
+# Placeholder for command to get memory info
+echo "Memory Information: $(free -h)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Output uptime information
+echo "Gathering uptime information..."
+# Placeholder for command to get uptime info
+echo "Uptime Information: $(uptime)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Backup the OS
+echo "Backing up the OS..."
+# Placeholder for command to back up the OS
+
+sudo tar -cvpzf /baker_street_backup.tar.gz --exclude=/baker_street_backup.tar.gz --exclude=/proc --exclude=/tmp --exclude=/mnt --exclude=/sys --exclude=/dev --exclude=/run /
+
+
+echo "OS backup completed." >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+
+# Output the sudoers file to the report
+echo "Gathering sudoers file..."
+# Placeholder for command to output sudoers file
+echo "Sudoers file:$(visudo -V)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Script to check for files with world permissions and update them
+echo "Checking for files with world permissions..."
+
+find /home -type f \( -perm -o=r -o -perm -o=w -o -perm -o=x \) -ls -exec chmod o-rwx {} +
+# Placeholder for command to find and update files with world permissions
+echo "World permissions have been removed from any files found." >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Find specific files and update their permissions
+echo "Updating permissions for specific scripts..."
+
+# Engineering scripts - Only members of the engineering group
+echo "Updating permissions for Engineering scripts."
+
+
+
+# Placeholder for command to update permissions
+find /home -type f -iname '*engineering*' -exec chown :engineering {} + -exec chmod 770 {} +
+
+echo "Permissions updated for Engineering scripts." >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Research scripts - Only members of the research group
+echo "Updating permissions for Research scripts..."
+# Placeholder for command to update permissions
+
+find /home -type f -iname '*research*' -exec chown :research {} + -exec chmod -R o= *
+
+echo "Permissions updated for Research scripts" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Finance scripts - Only members of the finance group
+echo "Updating permissions for Finance scripts"
+# Placeholder for command to update permissions
+
+find /home -type f -iname '*finance*' -exec chown :finance {} + -exec chmod 770 {} +
+
+echo "Permissions updated for Finance scripts." >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+echo "Script execution completed. Check $REPORT_FILE for details."
+
+
+
+
+hardening_script_2.sh
+
+#!/bin/bash
+
+# Variable for the report output file, choose a NEW output file name
+REPORT_FILE="report2.txt"
+
+# Output the sshd configuration file
+echo "Gathering details from sshd configuration file"
+# Placeholder for command to get the sshd configuration file
+
+echo "sshd configuration file:$(cat /etc/ssh/sshd_config)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+# Update packages and services
+Echo “Updating packages and services”
+
+# Placeholder for command to update packages
+
+apt update
+
+
+# Placeholder for command to upgrade packages
+
+apt upgrade -y
+
+echo "Packages have been updated and upgraded" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+# Placeholder for command to list all installed packages
+
+echo "Installed Packages:$(apt list –installed)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+
+
+
+
+echo “Printing out logging configuration data”
+
+# Placeholder for command to display logging data
+
+echo "journald.conf file data: $(cat /etc/systemd/journal.conf)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+# Placeholder for command to display logrotate data
+
+echo "logrotate.conf file data:$(cat /etc/logrotate.conf)" >> $REPORT_FILE
+printf "\n" >> $REPORT_FILE
+
+echo "Script execution completed. Check $REPORT_FILE for details."
+
+
+
+
+#Scripts scheduled with cron
+#crontab -e
+
+
