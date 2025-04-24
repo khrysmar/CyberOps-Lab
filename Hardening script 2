@@ -11,7 +11,7 @@ echo "sshd configuration file:$(cat /etc/ssh/sshd_config)" >> $REPORT_FILE
 printf "\n" >> $REPORT_FILE
 
 # Update packages and services
-Echo “Updating packages and services”
+echo “Updating packages and services”
 
 # Placeholder for command to update packages
 
