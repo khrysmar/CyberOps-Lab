@@ -92,7 +92,7 @@ Metasploitable also gets its IP via DHCP on boot — you can log in and run:
 
 `ifconfig`
 
-🔥 Ready to Hack (Ethically)
+## 🔥 Ready to Hack (Ethically)
 
 Now I can practice:
 
